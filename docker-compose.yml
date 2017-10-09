@@ -7,14 +7,15 @@ services:
     networks:
       - mdb
       - sig
-    ports:
-      - "8080"
-      - "4443:4443"
+      - client
     entrypoint: /usr/bin/env sh
     command: -c "./migrations/migrate.sh && notary-server -config=fixtures/server-config.json"
     depends_on:
       - mysql
       - signer
+    volumes:
+      - notarycerts:/go/src/github.com/docker/notary/fixtures
+    container_name: notaryserver
   signer:
     build:
       context: .
@@ -39,11 +40,36 @@ services:
       - TERM=dumb
       - MYSQL_ALLOW_EMPTY_PASSWORD="true"
     command: mysqld --innodb_file_per_table
+  sandboxregistry:
+    image: registry:2.4.1
+    networks:
+      - client
+    container_name: sandboxregistry
+  trustsandbox:
+    image: docker:dind
+    networks:
+      - client
+    volumes:
+      - notarycerts:/notarycerts
+    privileged: true
+    container_name: trustsandbox
+    depends_on:
+      - server
+    entrypoint: ""
+    command: |-
+        sh -c '
+            cp /notarycerts/root-ca.crt /usr/local/share/ca-certificates/root-ca.crt &&
+            update-ca-certificates &&
+            dockerd-entrypoint.sh --insecure-registry sandboxregistry:5000'
 volumes:
   notary_data:
+    external: false
+  notarycerts:
     external: false
 networks:
   mdb:
     external: false
   sig:
+    external: false
+  client:
     external: false
